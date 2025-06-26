@@ -34,11 +34,7 @@ function AuthCheck() {
         return <Redirect href="/(auth)/AuthForm" />;
     }
 
-    return (
-        <Stack>
-            <Stack.Screen name="(tabs)/index" />
-        </Stack>
-    );
+    return <Stack screenOptions={{ headerShown: false }} />;
 }
 
 export default function RootLayout() {
