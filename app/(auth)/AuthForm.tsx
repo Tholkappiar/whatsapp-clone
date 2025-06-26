@@ -1,4 +1,5 @@
 import Toast from "@/components/Toast";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { Feather } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
@@ -11,7 +12,6 @@ import {
     View,
 } from "react-native";
 
-// Types
 type ToastType = "error" | "success" | "info";
 
 interface FormData {
@@ -27,8 +27,8 @@ interface ToastState {
     type: ToastType;
 }
 
-// Main Auth Form Component
 const AuthForm: React.FC = () => {
+    const { signIn } = useAuthActions();
     const [isSignUp, setIsSignUp] = useState<boolean>(false);
     const [formData, setFormData] = useState<FormData>({
         email: "",
@@ -115,23 +115,50 @@ const AuthForm: React.FC = () => {
 
         setIsLoading(true);
 
-        // Simulate API call
-        setTimeout(() => {
-            setIsLoading(false);
+        try {
+            await signIn("password", {
+                email: formData.email,
+                password: formData.password,
+                flow: isSignUp ? "signUp" : "signIn",
+                // Add fullName for sign up if your Convex auth supports it
+                ...(isSignUp && { name: formData.fullName }),
+            });
+
             showToast(
                 isSignUp
                     ? "Account created successfully!"
                     : "Signed in successfully!",
                 "success"
             );
-            // Reset form
+
             setFormData({
                 email: "",
                 password: "",
                 confirmPassword: "",
                 fullName: "",
             });
-        }, 2000);
+        } catch (error: any) {
+            let errorMessage = "Authentication failed. Please try again.";
+
+            if (error?.message) {
+                if (error.message.includes("Invalid credentials")) {
+                    errorMessage = "Invalid email or password";
+                } else if (error.message.includes("User already exists")) {
+                    errorMessage = "An account with this email already exists";
+                } else if (error.message.includes("Weak password")) {
+                    errorMessage =
+                        "Password is too weak. Please choose a stronger password";
+                } else if (error.message.includes("Invalid email")) {
+                    errorMessage = "Please enter a valid email address";
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+
+            showToast(errorMessage, "error");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const toggleMode = (): void => {
@@ -142,6 +169,7 @@ const AuthForm: React.FC = () => {
             confirmPassword: "",
             fullName: "",
         });
+        hideToast();
     };
 
     return (
@@ -190,7 +218,7 @@ const AuthForm: React.FC = () => {
                                     <Text className="text-gray-700 font-medium mb-2">
                                         Full Name
                                     </Text>
-                                    <View className="flex-row items-center bg-gray-50 rounded-xl px-1 py-1 border border-gray-200">
+                                    <View className="flex-row items-center bg-gray-50 rounded-xl px-2 py-1 border border-gray-200">
                                         <Feather
                                             name="user"
                                             size={20}
@@ -207,6 +235,7 @@ const AuthForm: React.FC = () => {
                                                 })
                                             }
                                             placeholderTextColor="#9CA3AF"
+                                            editable={!isLoading}
                                         />
                                     </View>
                                 </View>
@@ -218,7 +247,7 @@ const AuthForm: React.FC = () => {
                             <Text className="text-gray-700 font-medium mb-2">
                                 Email
                             </Text>
-                            <View className="flex-row items-center bg-gray-50 rounded-xl px-1 py-1 border border-gray-200">
+                            <View className="flex-row items-center bg-gray-50 rounded-xl px-2 py-1 border border-gray-200">
                                 <Feather
                                     name="mail"
                                     size={20}
@@ -237,6 +266,7 @@ const AuthForm: React.FC = () => {
                                     keyboardType="email-address"
                                     autoCapitalize="none"
                                     placeholderTextColor="#9CA3AF"
+                                    editable={!isLoading}
                                 />
                             </View>
                         </View>
@@ -246,7 +276,7 @@ const AuthForm: React.FC = () => {
                             <Text className="text-gray-700 font-medium mb-2">
                                 Password
                             </Text>
-                            <View className="flex-row items-center bg-gray-50 rounded-xl px-1 py-1 border border-gray-200">
+                            <View className="flex-row items-center bg-gray-50 rounded-xl px-2 py-1 border border-gray-200">
                                 <Feather
                                     name="lock"
                                     size={20}
@@ -264,12 +294,14 @@ const AuthForm: React.FC = () => {
                                     }
                                     secureTextEntry={!showPassword}
                                     placeholderTextColor="#9CA3AF"
+                                    editable={!isLoading}
                                 />
                                 <TouchableOpacity
                                     onPress={() =>
                                         setShowPassword(!showPassword)
                                     }
                                     className="ml-2"
+                                    disabled={isLoading}
                                 >
                                     <Feather
                                         name={showPassword ? "eye-off" : "eye"}
@@ -295,7 +327,7 @@ const AuthForm: React.FC = () => {
                                     <Text className="text-gray-700 font-medium mb-2">
                                         Confirm Password
                                     </Text>
-                                    <View className="flex-row items-center bg-gray-50 rounded-xl px-1 py-1 border border-gray-200">
+                                    <View className="flex-row items-center bg-gray-50 rounded-xl px-2 py-1 border border-gray-200">
                                         <Feather
                                             name="lock"
                                             size={20}
@@ -315,6 +347,7 @@ const AuthForm: React.FC = () => {
                                                 !showConfirmPassword
                                             }
                                             placeholderTextColor="#9CA3AF"
+                                            editable={!isLoading}
                                         />
                                         <TouchableOpacity
                                             onPress={() =>
@@ -323,6 +356,7 @@ const AuthForm: React.FC = () => {
                                                 )
                                             }
                                             className="ml-2"
+                                            disabled={isLoading}
                                         >
                                             <Feather
                                                 name={
@@ -348,9 +382,13 @@ const AuthForm: React.FC = () => {
                             }`}
                         >
                             {isLoading ? (
-                                <Text className="text-white font-semibold">
-                                    Loading...
-                                </Text>
+                                <View className="flex-row items-center">
+                                    <Text className="text-white font-semibold mr-2">
+                                        {isSignUp
+                                            ? "Creating Account..."
+                                            : "Signing In..."}
+                                    </Text>
+                                </View>
                             ) : (
                                 <Text className="text-white font-semibold text-lg">
                                     {isSignUp ? "Create Account" : "Sign In"}
@@ -366,8 +404,14 @@ const AuthForm: React.FC = () => {
                                 ? "Already have an account?"
                                 : "Don't have an account?"}
                         </Text>
-                        <TouchableOpacity onPress={toggleMode} className="py-1">
-                            <Text className="text-blue-600 font-semibold">
+                        <TouchableOpacity
+                            onPress={toggleMode}
+                            className="py-1"
+                            disabled={isLoading}
+                        >
+                            <Text
+                                className={`font-semibold ${isLoading ? "text-gray-400" : "text-blue-600"}`}
+                            >
                                 {isSignUp ? "Sign In" : "Sign Up"}
                             </Text>
                         </TouchableOpacity>
@@ -375,8 +419,13 @@ const AuthForm: React.FC = () => {
 
                     {/* Forgot Password (Sign In Only) */}
                     {!isSignUp && (
-                        <TouchableOpacity className="items-center mt-4">
-                            <Text className="text-blue-600 font-medium">
+                        <TouchableOpacity
+                            className="items-center mt-4"
+                            disabled={isLoading}
+                        >
+                            <Text
+                                className={`font-medium ${isLoading ? "text-gray-400" : "text-blue-600"}`}
+                            >
                                 Forgot Password?
                             </Text>
                         </TouchableOpacity>
