@@ -15,29 +15,14 @@ import {
     View,
 } from "react-native";
 
-// Types
-interface ChatCode {
-    _id: Id<"chatCodes">;
-    code: string;
-    userId: Id<"users">;
-    isOneTime: boolean;
-    expiresAt?: number;
-    deletedAt?: number;
-}
-
 interface ChatRequest {
     _id: Id<"chatRequests">;
-    chatCode: Id<"chatCodes">;
-    fromUserId: Id<"users">;
-    toUserId: Id<"users">;
-    status: "pending" | "accepted" | "declined";
-    deletedAt?: number;
     _creationTime: number;
-}
-
-interface User {
-    _id: Id<"users">;
-    name: string;
+    deletedAt?: number | undefined;
+    chatCode: Id<"chatCodes">;
+    requestedBy: Id<"users">;
+    requestedTo: Id<"users">;
+    status: "pending" | "accepted" | "declined";
 }
 
 const RequestSection: React.FC = () => {
@@ -156,7 +141,7 @@ const RequestSection: React.FC = () => {
         <View className="bg-white m-2 p-4 rounded-lg border border-gray-200">
             <Text className="font-semibold text-gray-800">
                 {/* Placeholder: Replace with actual user name from users table */}
-                From: {item.fromUserId}
+                From: {item.requestedBy}
             </Text>
             <Text className="text-gray-500 text-sm mt-1">
                 Code: {item.chatCode} •{" "}
@@ -186,7 +171,7 @@ const RequestSection: React.FC = () => {
     const renderSentRequest = ({ item }: { item: ChatRequest }) => (
         <View className="bg-white m-2 p-4 rounded-lg border border-gray-200">
             <Text className="font-semibold text-gray-800">
-                To: {item.toUserId}
+                To: {item.requestedTo}
             </Text>
             <Text className="text-gray-500 text-sm mt-1">
                 Code: {item.chatCode} •{" "}
