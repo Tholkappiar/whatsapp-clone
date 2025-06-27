@@ -1,13 +1,12 @@
+import { api } from "@/convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useQuery } from "convex/react";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 const Profile = () => {
-    const user = {
-        email: "some@gmail.com",
-        _creationTime: 2345,
-        _id: "some_id",
-    };
+    const user = useQuery(api.user.getProfile);
+
     const { signOut } = useAuthActions();
 
     const handleSignOut = async () => {

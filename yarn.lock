@@ -1796,6 +1796,11 @@
   dependencies:
     "@radix-ui/react-compose-refs" "1.1.2"
 
+"@react-native-clipboard/clipboard@^1.16.2":
+  version "1.16.2"
+  resolved "https://registry.yarnpkg.com/@react-native-clipboard/clipboard/-/clipboard-1.16.2.tgz#d8517eea937d336b8fe1ca44e955e691d27f5ba4"
+  integrity sha512-VqUYwVxo7DyHMz7v2LxLMaAOSu3pKFvzpqR4jQezdH0VyaudILTTcUf7dR4TroARU/lLkTU8nZA11UniTvGVXg==
+
 "@react-native/assets-registry@0.79.4":
   version "0.79.4"
   resolved "https://registry.yarnpkg.com/@react-native/assets-registry/-/assets-registry-0.79.4.tgz#6b1f6c843ae7b6e6e6804f897c182301c0f03d8c"
@@ -3858,6 +3863,11 @@ expo-blur@~14.1.5:
   version "14.1.5"
   resolved "https://registry.yarnpkg.com/expo-blur/-/expo-blur-14.1.5.tgz#910712389e19286ccdc136275bf569f427aa05ef"
   integrity sha512-CCLJHxN4eoAl06ESKT3CbMasJ98WsjF9ZQEJnuxtDb9ffrYbZ+g9ru84fukjNUOTtc8A8yXE5z8NgY1l0OMrmQ==
+
+expo-clipboard@~7.1.4:
+  version "7.1.4"
+  resolved "https://registry.yarnpkg.com/expo-clipboard/-/expo-clipboard-7.1.4.tgz#f2cda0d3cbfd2d307aa85dd7ba6843d6bbaf4227"
+  integrity sha512-NHhfKnrzb4o0PacUKD93ByadU0JmPBoFTFYbbFJZ9OAX6SImpSqG5gfrMUR3vVj4Qx9f1LpMcdAv5lBzv868ow==
 
 expo-constants@~17.1.5, expo-constants@~17.1.6:
   version "17.1.6"

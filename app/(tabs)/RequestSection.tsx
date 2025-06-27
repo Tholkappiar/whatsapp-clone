@@ -1,8 +1,14 @@
+import { ChatCodeCard } from "@/components/CodeCard";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Feather } from "@expo/vector-icons";
+import { useMutation, useQuery } from "convex/react";
 import React, { useState } from "react";
 import {
     Alert,
     FlatList,
+    ScrollView,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -10,59 +16,77 @@ import {
 } from "react-native";
 
 // Types
-interface ChatRequest {
-    id: string;
-    name: string;
-    chatCode: string;
-    timestamp: string;
+interface ChatCode {
+    _id: Id<"chatCodes">;
+    code: string;
+    userId: Id<"users">;
+    isOneTime: boolean;
+    expiresAt?: number;
+    deletedAt?: number;
 }
 
-interface SentRequest {
-    id: string;
-    chatCode: string;
-    timestamp: string;
+interface ChatRequest {
+    _id: Id<"chatRequests">;
+    chatCode: Id<"chatCodes">;
+    fromUserId: Id<"users">;
+    toUserId: Id<"users">;
     status: "pending" | "accepted" | "declined";
+    deletedAt?: number;
+    _creationTime: number;
+}
+
+interface User {
+    _id: Id<"users">;
+    name: string;
 }
 
 const RequestSection: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<"received" | "sent" | "add">(
-        "received"
-    );
+    const [activeTab, setActiveTab] = useState<
+        "received" | "sent" | "add" | "generate"
+    >("received");
     const [chatCode, setChatCode] = useState<string>("");
-    const [myCode] = useState<string>("87654321"); // Mocked user code
+    const [isOneTime, setIsOneTime] = useState<boolean>(true);
+    const [validityHours, setValidityHours] = useState<string>("24");
 
-    // Mock data for received requests
-    const [receivedRequests, setReceivedRequests] = useState<ChatRequest[]>([
-        {
-            id: "1",
-            name: "Alice",
-            chatCode: "12345678",
-            timestamp: "2 hours ago",
-        },
-        { id: "2", name: "Bob", chatCode: "87654321", timestamp: "1 day ago" },
-    ]);
+    const myChatCodes = useQuery(api.chatCode.getMyChatCode) || [];
+    const receivedRequests = useQuery(api.chatCode.getAllRequest) || [];
+    const receivedInvites = useQuery(api.chatCode.getAllSendRequest) || [];
+    const generateChatCode = useMutation(api.chatCode.createChatCode);
+    const sendChatRequestMutation = useMutation(api.chatCode.sendChatRequest);
+    const checkChatCodeExists = useQuery(api.chatCode.checkChatCodeExists, {
+        code: chatCode,
+    });
+    const checkChatCodeRequest = useQuery(api.chatCode.checkChatCodeRequest, {
+        code: chatCode,
+    });
+    const handleChatRequest = useMutation(api.chatCode.handleChatRequest);
 
-    // Mock data for sent requests
-    const [sentRequests, setSentRequests] = useState<SentRequest[]>([
-        {
-            id: "1",
-            chatCode: "99887766",
-            timestamp: "1 hour ago",
-            status: "pending",
-        },
-        {
-            id: "2",
-            chatCode: "55443322",
-            timestamp: "1 day ago",
-            status: "accepted",
-        },
-    ]);
+    // Generate a new chat code
+    const handleGenerateCode = async () => {
+        const hours = parseInt(validityHours);
+        if (isNaN(hours) || hours < 0) {
+            Alert.alert(
+                "Invalid Input",
+                "Please enter a valid number of hours"
+            );
+            return;
+        }
+        try {
+            const result = await generateChatCode({
+                isOneTime,
+                validityHours: hours,
+            });
+            Alert.alert("Success", `New chat code generated: ${result.code}`);
+        } catch (error) {
+            Alert.alert("Error", "Failed to generate chat code");
+        }
+    };
 
     const validateChatCode = (code: string): boolean => {
         return /^\d{8}$/.test(code);
     };
 
-    const sendChatRequest = (): void => {
+    const sendChatRequest = async (): Promise<void> => {
         if (!validateChatCode(chatCode)) {
             Alert.alert(
                 "Invalid Code",
@@ -70,17 +94,15 @@ const RequestSection: React.FC = () => {
             );
             return;
         }
-        if (chatCode === myCode) {
-            Alert.alert(
-                "Invalid Code",
-                "You cannot send a request to yourself"
-            );
+
+        // Check if code exists
+        if (!checkChatCodeExists) {
+            Alert.alert("Invalid Code", "This chat code does not exist");
             return;
         }
-        const alreadySent = sentRequests.some(
-            (req) => req.chatCode === chatCode
-        );
-        if (alreadySent) {
+
+        // Check if request already sent
+        if (checkChatCodeRequest) {
             Alert.alert(
                 "Request Already Sent",
                 "You have already sent a request to this code"
@@ -88,62 +110,90 @@ const RequestSection: React.FC = () => {
             return;
         }
 
-        const newRequest: SentRequest = {
-            id: Date.now().toString(),
-            chatCode: chatCode,
-            timestamp: "Just now",
-            status: "pending",
-        };
-        setSentRequests([newRequest, ...sentRequests]);
-        setChatCode("");
-        Alert.alert(
-            "Request Sent!",
-            "Your chat request has been sent successfully"
-        );
+        // Check if code belongs to the current user
+        if (myChatCodes.some((c) => c.code === chatCode)) {
+            Alert.alert(
+                "Invalid Code",
+                "You cannot send a request to yourself"
+            );
+            return;
+        }
+
+        try {
+            await sendChatRequestMutation({ code: chatCode });
+            setChatCode("");
+            Alert.alert(
+                "Request Sent!",
+                "Your chat request has been sent successfully"
+            );
+        } catch (error: any) {
+            Alert.alert(
+                "Error",
+                error.message || "Failed to send chat request"
+            );
+        }
     };
 
-    const acceptRequest = (requestId: string): void => {
-        setReceivedRequests((prev) =>
-            prev.filter((req) => req.id !== requestId)
-        );
-        Alert.alert("Request Accepted", "You can now start chatting!");
+    const acceptRequest = async (requestId: Id<"chatRequests">) => {
+        try {
+            await handleChatRequest({ requestId, action: "accept" });
+            Alert.alert("Request Accepted", "You can now start chatting!");
+        } catch (error) {
+            Alert.alert("Error", "Failed to accept request");
+        }
     };
 
-    const declineRequest = (requestId: string): void => {
-        setReceivedRequests((prev) =>
-            prev.filter((req) => req.id !== requestId)
-        );
+    const declineRequest = async (requestId: Id<"chatRequests">) => {
+        try {
+            await handleChatRequest({ requestId, action: "decline" });
+            Alert.alert("Request Declined", "The request has been declined");
+        } catch (error) {
+            Alert.alert("Error", "Failed to decline request");
+        }
     };
 
     const renderReceivedRequest = ({ item }: { item: ChatRequest }) => (
-        <View className="bg-white m-2 p-3 rounded-lg border border-gray-200">
-            <Text className="font-semibold">{item.name}</Text>
-            <Text className="text-gray-500 text-sm">
-                Code: {item.chatCode} • {item.timestamp}
+        <View className="bg-white m-2 p-4 rounded-lg border border-gray-200">
+            <Text className="font-semibold text-gray-800">
+                {/* Placeholder: Replace with actual user name from users table */}
+                From: {item.fromUserId}
             </Text>
-            <View className="flex-row mt-2 space-x-2">
+            <Text className="text-gray-500 text-sm mt-1">
+                Code: {item.chatCode} •{" "}
+                {new Date(item._creationTime).toLocaleString()}
+            </Text>
+            <View className="flex-row mt-3 space-x-3">
                 <TouchableOpacity
-                    onPress={() => acceptRequest(item.id)}
-                    className="flex-1 bg-blue-500 p-2 rounded"
+                    onPress={() => acceptRequest(item._id)}
+                    className="flex-1 bg-blue-500 py-2 rounded-lg"
                 >
-                    <Text className="text-white text-center">Accept</Text>
+                    <Text className="text-white text-center font-medium">
+                        Accept
+                    </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                    onPress={() => declineRequest(item.id)}
-                    className="flex-1 bg-gray-200 p-2 rounded"
+                    onPress={() => declineRequest(item._id)}
+                    className="flex-1 bg-gray-200 py-2 rounded-lg"
                 >
-                    <Text className="text-gray-700 text-center">Decline</Text>
+                    <Text className="text-gray-700 text-center font-medium">
+                        Decline
+                    </Text>
                 </TouchableOpacity>
             </View>
         </View>
     );
 
-    const renderSentRequest = ({ item }: { item: SentRequest }) => (
-        <View className="bg-white m-2 p-3 rounded-lg border border-gray-200">
-            <Text className="font-semibold">Code: {item.chatCode}</Text>
-            <Text className="text-gray-500 text-sm">{item.timestamp}</Text>
+    const renderSentRequest = ({ item }: { item: ChatRequest }) => (
+        <View className="bg-white m-2 p-4 rounded-lg border border-gray-200">
+            <Text className="font-semibold text-gray-800">
+                To: {item.toUserId}
+            </Text>
+            <Text className="text-gray-500 text-sm mt-1">
+                Code: {item.chatCode} •{" "}
+                {new Date(item._creationTime).toLocaleString()}
+            </Text>
             <Text
-                className={`text-sm mt-1 ${
+                className={`text-sm mt-2 font-medium ${
                     item.status === "pending"
                         ? "text-yellow-600"
                         : item.status === "accepted"
@@ -163,30 +213,32 @@ const RequestSection: React.FC = () => {
                     <FlatList
                         data={receivedRequests}
                         renderItem={renderReceivedRequest}
-                        keyExtractor={(item) => item.id}
+                        keyExtractor={(item) => item._id}
                         className="flex-1"
+                        contentContainerStyle={{ paddingBottom: 20 }}
                     />
                 ) : (
                     <View className="flex-1 items-center justify-center">
                         <Feather name="inbox" size={40} color="#9CA3AF" />
-                        <Text className="text-lg font-semibold mt-2">
+                        <Text className="text-lg font-semibold text-gray-600 mt-2">
                             No requests yet
                         </Text>
                     </View>
                 );
 
             case "sent":
-                return sentRequests.length > 0 ? (
+                return receivedInvites.length > 0 ? (
                     <FlatList
-                        data={sentRequests}
+                        data={receivedInvites}
                         renderItem={renderSentRequest}
-                        keyExtractor={(item) => item.id}
+                        keyExtractor={(item) => item._id}
                         className="flex-1"
+                        contentContainerStyle={{ paddingBottom: 20 }}
                     />
                 ) : (
                     <View className="flex-1 items-center justify-center">
                         <Feather name="send" size={40} color="#9CA3AF" />
-                        <Text className="text-lg font-semibold mt-2">
+                        <Text className="text-lg font-semibold text-gray-600 mt-2">
                             No sent requests
                         </Text>
                     </View>
@@ -196,18 +248,49 @@ const RequestSection: React.FC = () => {
                 return (
                     <View className="flex-1 p-4">
                         <View className="bg-white p-4 rounded-lg border border-gray-200 mb-4">
-                            <Text className="text-lg font-semibold">
-                                Your Chat Code
+                            <Text className="text-lg font-semibold text-gray-800 mb-2">
+                                Generate Chat Code
                             </Text>
-                            <Text className="text-gray-500">{myCode}</Text>
+                            <View className="mt-2">
+                                <View className="flex-row items-center justify-between mb-3">
+                                    <Text className="text-gray-700">
+                                        One-time use
+                                    </Text>
+                                    <Switch
+                                        value={isOneTime}
+                                        onValueChange={setIsOneTime}
+                                        trackColor={{
+                                            false: "#D1D5DB",
+                                            true: "#3B82F6",
+                                        }}
+                                    />
+                                </View>
+                                <TextInput
+                                    className="border border-gray-200 rounded-lg p-2 mb-3 text-gray-800"
+                                    placeholder="Validity (hours, 0 for no expiration)"
+                                    placeholderTextColor="#9CA3AF"
+                                    value={validityHours}
+                                    onChangeText={setValidityHours}
+                                    keyboardType="numeric"
+                                />
+                                <TouchableOpacity
+                                    onPress={handleGenerateCode}
+                                    className="bg-blue-500 py-3 rounded-lg"
+                                >
+                                    <Text className="text-white text-center font-medium">
+                                        Generate New Code
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                         <View className="bg-white p-4 rounded-lg border border-gray-200">
-                            <Text className="text-lg font-semibold mb-2">
+                            <Text className="text-lg font-semibold text-gray-800 mb-2">
                                 Add New Chat
                             </Text>
                             <TextInput
-                                className="border border-gray-200 rounded p-2 mb-2"
+                                className="border border-gray-200 rounded-lg p-2 mb-3 text-gray-800"
                                 placeholder="Enter 8-digit code"
+                                placeholderTextColor="#9CA3AF"
                                 value={chatCode}
                                 onChangeText={setChatCode}
                                 keyboardType="numeric"
@@ -216,10 +299,18 @@ const RequestSection: React.FC = () => {
                             <TouchableOpacity
                                 onPress={sendChatRequest}
                                 disabled={!chatCode.trim()}
-                                className={`p-3 rounded ${chatCode.trim() ? "bg-blue-500" : "bg-gray-300"}`}
+                                className={`py-3 rounded-lg ${
+                                    chatCode.trim()
+                                        ? "bg-blue-500"
+                                        : "bg-gray-300"
+                                }`}
                             >
                                 <Text
-                                    className={`text-center ${chatCode.trim() ? "text-white" : "text-gray-500"}`}
+                                    className={`text-center font-medium ${
+                                        chatCode.trim()
+                                            ? "text-white"
+                                            : "text-gray-500"
+                                    }`}
                                 >
                                     Send Request
                                 </Text>
@@ -227,7 +318,35 @@ const RequestSection: React.FC = () => {
                         </View>
                     </View>
                 );
-
+            case "generate":
+                return (
+                    <View className="flex-1 bg-gray-50 p-4">
+                        <Text className="text-lg font-bold text-gray-800 mb-4">
+                            Generated Codes
+                        </Text>
+                        <ScrollView
+                            contentContainerStyle={{ paddingBottom: 20 }}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {myChatCodes.length > 0 ? (
+                                myChatCodes.map((code) => (
+                                    <ChatCodeCard key={code._id} code={code} />
+                                ))
+                            ) : (
+                                <View className="items-center">
+                                    <Feather
+                                        name="code"
+                                        size={40}
+                                        color="#9CA3AF"
+                                    />
+                                    <Text className="text-lg font-semibold text-gray-600 mt-2">
+                                        No generated codes
+                                    </Text>
+                                </View>
+                            )}
+                        </ScrollView>
+                    </View>
+                );
             default:
                 return null;
         }
@@ -236,36 +355,76 @@ const RequestSection: React.FC = () => {
     return (
         <View className="flex-1 bg-gray-50">
             <View className="bg-white p-4 border-b border-gray-200">
-                <Text className="text-xl font-bold">Requests</Text>
-                <View className="flex-row mt-2">
+                <Text className="text-xl font-bold text-gray-800">
+                    Requests
+                </Text>
+                <View className="flex-row mt-3 space-x-2">
                     <TouchableOpacity
                         onPress={() => setActiveTab("received")}
-                        className={`flex-1 p-2 rounded ${activeTab === "received" ? "bg-blue-100" : "bg-gray-100"}`}
+                        className={`flex-1 py-2 rounded-lg ${
+                            activeTab === "received"
+                                ? "bg-blue-100"
+                                : "bg-gray-100"
+                        }`}
                     >
                         <Text
-                            className={`text-center ${activeTab === "received" ? "text-blue-600" : "text-gray-600"}`}
+                            className={`text-center font-medium ${
+                                activeTab === "received"
+                                    ? "text-blue-600"
+                                    : "text-gray-600"
+                            }`}
                         >
                             Received
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => setActiveTab("sent")}
-                        className={`flex-1 p-2 rounded ${activeTab === "sent" ? "bg-blue-100" : "bg-gray-100"}`}
+                        className={`flex-1 py-2 rounded-lg ${
+                            activeTab === "sent" ? "bg-blue-100" : "bg-gray-100"
+                        }`}
                     >
                         <Text
-                            className={`text-center ${activeTab === "sent" ? "text-blue-600" : "text-gray-600"}`}
+                            className={`text-center font-medium ${
+                                activeTab === "sent"
+                                    ? "text-blue-600"
+                                    : "text-gray-600"
+                            }`}
                         >
                             Sent
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => setActiveTab("add")}
-                        className={`flex-1 p-2 rounded ${activeTab === "add" ? "bg-blue-100" : "bg-gray-100"}`}
+                        className={`flex-1 py-2 rounded-lg ${
+                            activeTab === "add" ? "bg-blue-100" : "bg-gray-100"
+                        }`}
                     >
                         <Text
-                            className={`text-center ${activeTab === "add" ? "text-blue-600" : "text-gray-600"}`}
+                            className={`text-center font-medium ${
+                                activeTab === "add"
+                                    ? "text-blue-600"
+                                    : "text-gray-600"
+                            }`}
                         >
-                            Add New
+                            New
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => setActiveTab("generate")}
+                        className={`flex-1 py-2 rounded-lg ${
+                            activeTab === "generate"
+                                ? "bg-blue-100"
+                                : "bg-gray-100"
+                        }`}
+                    >
+                        <Text
+                            className={`text-center font-medium ${
+                                activeTab === "generate"
+                                    ? "text-blue-600"
+                                    : "text-gray-600"
+                            }`}
+                        >
+                            Codes
                         </Text>
                     </TouchableOpacity>
                 </View>
